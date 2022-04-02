@@ -1,68 +1,104 @@
-{ config, options, kubenix, pkgs, lib, ... }:
-
-with lib;
-
-let
+{
+  config,
+  options,
+  kubenix,
+  pkgs,
+  lib,
+  ...
+}:
+with lib; let
   cfg = config.submodules;
   parentConfig = config;
 
   matchesVersion = requiredVersion: version:
-    if requiredVersion != null then
+    if requiredVersion != null
+    then
       if hasPrefix "~" requiredVersion
       then (builtins.match (removePrefix "~" requiredVersion) version) != null
       else requiredVersion == version
     else true;
 
-  getDefaults = {name, version, tags, features}:
-    catAttrs "default" (filter (submoduleDefault:
-      (submoduleDefault.name == null || submoduleDefault.name == name) &&
-      (matchesVersion submoduleDefault.version version) &&
-      (
-        (length submoduleDefault.tags == 0) ||
-        (length (intersectLists submoduleDefault.tags tags)) > 0
-      ) &&
-      (
-        (length submoduleDefault.features == 0) ||
-        (length (intersectLists submoduleDefault.features features)) > 0
+  getDefaults = {
+    name,
+    version,
+    tags,
+    features,
+  }:
+    catAttrs "default" (filter (
+        submoduleDefault:
+          (submoduleDefault.name == null || submoduleDefault.name == name)
+          && (matchesVersion submoduleDefault.version version)
+          && (
+            (length submoduleDefault.tags == 0)
+            || (length (intersectLists submoduleDefault.tags tags)) > 0
+          )
+          && (
+            (length submoduleDefault.features == 0)
+            || (length (intersectLists submoduleDefault.features features)) > 0
+          )
       )
-    ) config.submodules.defaults);
+      config.submodules.defaults);
 
-  specialArgs = cfg.specialArgs // {
-    parentConfig = config;
-  };
+  specialArgs =
+    cfg.specialArgs
+    // {
+      parentConfig = config;
+    };
 
-  findSubmodule = {name, version ? null, latest ? true}: let
-    matchingSubmodules = filter (el:
-      el.definition.name == name &&
-      (matchesVersion version el.definition.version)
-    ) cfg.imports;
+  findSubmodule = {
+    name,
+    version ? null,
+    latest ? true,
+  }: let
+    matchingSubmodules =
+      filter (
+        el:
+          el.definition.name
+          == name
+          && (matchesVersion version el.definition.version)
+      )
+      cfg.imports;
 
-    versionSortedSubmodules = sort (s1: s2:
-      if builtins.compareVersions s1.definition.version s2.definition.version > 0
-      then true else false
-    ) matchingSubmodules;
+    versionSortedSubmodules =
+      sort (
+        s1: s2:
+          if builtins.compareVersions s1.definition.version s2.definition.version > 0
+          then true
+          else false
+      )
+      matchingSubmodules;
 
     matchingModule =
       if length versionSortedSubmodules == 0
-      then throw "No module found ${name}/${if version == null then "latest" else version}"
+      then
+        throw "No module found ${name}/${
+          if version == null
+          then "latest"
+          else version
+        }"
       else head versionSortedSubmodules;
-  in matchingModule;
+  in
+    matchingModule;
 
   passthruConfig = mapAttrsToList (name: opt: {
-    ${name} = mkMerge (mapAttrsToList (_: inst:
-      if inst.passthru.enable
-      then inst.config.submodule.passthru.${name} or {}
-      else {}
-    ) config.submodules.instances);
+    ${name} = mkMerge (mapAttrsToList (
+        _: inst:
+          if inst.passthru.enable
+          then inst.config.submodule.passthru.${name} or {}
+          else {}
+      )
+      config.submodules.instances);
 
-    _module.args = mkMerge (mapAttrsToList (_: inst:
-      if inst.passthru.enable
-      then inst.config.submodule.passthru._module.args or {}
-      else {}
-    ) config.submodules.instances);
+    _module.args = mkMerge (mapAttrsToList (
+        _: inst:
+          if inst.passthru.enable
+          then inst.config.submodule.passthru._module.args or {}
+          else {}
+      )
+      config.submodules.instances);
   }) (removeAttrs options ["_definedNames" "_module" "_m" "submodules"]);
 in {
-  imports = [ ./base.nix ];
+  imports = [./base.nix];
 
   options = {
     submodules.specialArgs = mkOption {
@@ -122,12 +158,17 @@ in {
       description = "List of submodule imports";
       type = types.listOf (
         types.coercedTo
-          types.path
-          (module: {inherit module;})
-          (types.submodule ({name, config, ...}: let
+        types.path
+        (module: {inherit module;})
+        (
+          types.submodule ({
+            name,
+            config,
+            ...
+          }: let
             evaledSubmodule' = evalModules {
               inherit specialArgs;
-              modules = config.modules ++ [ ./base.nix ];
+              modules = config.modules ++ [./base.nix];
               check = false;
             };
 
@@ -181,7 +222,12 @@ in {
     submodules.instances = mkOption {
       description = "Attribute set of submodule instances";
       default = {};
-      type = types.attrsOf (types.submodule ({name, config, options, ...}: let
+      type = types.attrsOf (types.submodule ({
+        name,
+        config,
+        options,
+        ...
+      }: let
         # submodule associated with
         submodule = findSubmodule {
           name = config.submodule;
@@ -229,13 +275,15 @@ in {
 
           config = mkOption {
             description = "Submodule instance ${config.name} for ${submoduleDefinition.name}:${submoduleDefinition.version} config";
-            type = submoduleWithSpecialArgs ({...}: {
-              imports = submodule.modules ++ defaults ++ [ ./base.nix ];
-              _module.args.pkgs = pkgs;
-              _module.args.name = config.name;
-              _module.args.submodule = config;
-              submodule.args = mkAliasDefinitions options.args;
-            }) specialArgs;
+            type =
+              submoduleWithSpecialArgs ({...}: {
+                imports = submodule.modules ++ defaults ++ [./base.nix];
+                _module.args.pkgs = pkgs;
+                _module.args.name = config.name;
+                _module.args.submodule = config;
+                submodule.args = mkAliasDefinitions options.args;
+              })
+              specialArgs;
             default = {};
           };
 
@@ -249,42 +297,48 @@ in {
   };
 
   config = mkMerge ([
-    {
-      # register exported functions as args
-      _module.args = mkMerge (map (submodule: {
-        ${submodule.exportAs} = submodule.definition.exports;
-      }) (filter (submodule: submodule.exportAs != null) cfg.imports));
+      {
+        # register exported functions as args
+        _module.args = mkMerge (map (submodule: {
+          ${submodule.exportAs} = submodule.definition.exports;
+        }) (filter (submodule: submodule.exportAs != null) cfg.imports));
 
-      _m.features = ["submodules"];
+        _m.features = ["submodules"];
 
-      submodules.specialArgs.kubenix = kubenix;
+        submodules.specialArgs.kubenix = kubenix;
 
-      # passthru kubenix.project to submodules
-      submodules.defaults = mkMerge [
-        [{
-          default = {
-            kubenix.project = parentConfig.kubenix.project;
-          };
-        }]
+        # passthru kubenix.project to submodules
+        submodules.defaults = mkMerge [
+          [
+            {
+              default = {
+                kubenix.project = parentConfig.kubenix.project;
+              };
+            }
+          ]
 
-        (map (propagate: {
-          features = propagate.features;
-          default = propagate.module;
-        }) config._m.propagate)
-      ];
-    }
+          (map (propagate: {
+              features = propagate.features;
+              default = propagate.module;
+            })
+            config._m.propagate)
+        ];
+      }
 
-    (mkIf cfg.propagate.enable {
-      # if propagate is enabled and submodule has submodules included propagage defaults and imports
-      submodules.defaults = [{
-        features = ["submodules"];
-        default = {
-          submodules = {
-            defaults = cfg.defaults;
-            imports = cfg.imports;
-          };
-        };
-      }];
-    })
-  ] ++ passthruConfig);
+      (mkIf cfg.propagate.enable {
+        # if propagate is enabled and submodule has submodules included propagage defaults and imports
+        submodules.defaults = [
+          {
+            features = ["submodules"];
+            default = {
+              submodules = {
+                defaults = cfg.defaults;
+                imports = cfg.imports;
+              };
+            };
+          }
+        ];
+      })
+    ]
+    ++ passthruConfig);
 }

@@ -1,8 +1,9 @@
-{ config, lib, ... }:
-
-with lib;
-
 {
+  config,
+  lib,
+  ...
+}:
+with lib; {
   options = {
     kubenix.project = mkOption {
       description = "Name of the project";

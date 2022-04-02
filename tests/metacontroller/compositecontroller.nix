@@ -1,7 +1,9 @@
-{ config, kubenix, ... }:
-
 {
-  imports = [ kubenix.modules.test kubenix.modules.metacontroller ];
+  config,
+  kubenix,
+  ...
+}: {
+  imports = [kubenix.modules.test kubenix.modules.metacontroller];
 
   test = {
     name = "metacontroller-controllers";
@@ -15,10 +17,12 @@
         apiVersion = "ctl.enisoc.com/v1";
         resource = "things";
       };
-      childResources = [{
-        apiVersion = "v1";
-        resource = "pods";
-      }];
+      childResources = [
+        {
+          apiVersion = "v1";
+          resource = "pods";
+        }
+      ];
       hooks.sync.webhook.url = "http://thing-controller.metacontroller/sync";
     };
   };

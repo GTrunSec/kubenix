@@ -1,27 +1,36 @@
-{ config, lib, kubenix, pkgs, k8sVersion, ... }:
-
-with lib;
-
-let
+{
+  config,
+  lib,
+  kubenix,
+  pkgs,
+  k8sVersion,
+  ...
+}:
+with lib; let
   cfg = config.kubernetes.api.resources.deployments.app;
 in {
-  imports = with kubenix.modules; [ test k8s legacy ];
+  imports = with kubenix.modules; [test k8s legacy];
 
   test = {
     name = "legacy-k8s";
     description = "Simple test kubenix legacy kubernetes support";
-    assertions = [{
-      message = "should have correct resource options set";
-      assertion =
-        cfg.kind == "Deployment" &&
-        cfg.metadata.name == "app";
-    } {
-      message = "should have correct defaults set";
-      assertion =
-        cfg.metadata.namespace == "test" &&
-        cfg.metadata.labels.label1 == "value1" &&
-        cfg.metadata.labels.label2 == "value2";
-    }];
+    assertions = [
+      {
+        message = "should have correct resource options set";
+        assertion =
+          cfg.kind
+          == "Deployment"
+          && cfg.metadata.name == "app";
+      }
+      {
+        message = "should have correct defaults set";
+        assertion =
+          cfg.metadata.namespace
+          == "test"
+          && cfg.metadata.labels.label1 == "value1"
+          && cfg.metadata.labels.label2 == "value2";
+      }
+    ];
   };
 
   kubernetes.version = k8sVersion;
@@ -45,13 +54,17 @@ in {
   };
 
   kubernetes.defaults = {
-    all = [{
-      metadata.namespace = "test";
-      metadata.labels.label1 = "value1";
-    }];
+    all = [
+      {
+        metadata.namespace = "test";
+        metadata.labels.label1 = "value1";
+      }
+    ];
 
-    deployments = [{
-      metadata.labels.label2 = "value2";
-    }];
+    deployments = [
+      {
+        metadata.labels.label2 = "value2";
+      }
+    ];
   };
 }

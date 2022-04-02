@@ -8,4 +8,5 @@ let
     inherit pkgs lib;
     nixosPath = "${nixpkgsSrc}/nixos";
   };
-in pkgs.recurseIntoAttrs release
+in
+  pkgs.recurseIntoAttrs release

@@ -1,8 +1,10 @@
-{ lib, config, pkgs, ... }:
-
-with lib;
-
-let
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
+with lib; let
   cfg = config.test;
 in {
   options.test = {
@@ -38,7 +40,12 @@ in {
         };
       });
       default = [];
-      example = [ { assertion = false; message = "you can't enable this for that reason"; } ];
+      example = [
+        {
+          assertion = false;
+          message = "you can't enable this for that reason";
+        }
+      ];
       description = ''
         This option allows modules to express conditions that must
         hold for the evaluation of the system configuration to

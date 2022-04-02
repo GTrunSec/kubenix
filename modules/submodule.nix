@@ -1,9 +1,10 @@
-{ config, lib, ... }:
-
-with lib;
-
 {
-  imports = [ ./base.nix ];
+  config,
+  lib,
+  ...
+}:
+with lib; {
+  imports = [./base.nix];
 
   options.submodule = {
     name = mkOption {

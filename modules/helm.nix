@@ -1,11 +1,13 @@
 # helm defines kubenix module with options for using helm charts
 # with kubenix
-
-{ config, lib, pkgs, helm, ... }:
-
-with lib;
-
-let
+{
+  config,
+  lib,
+  pkgs,
+  helm,
+  ...
+}:
+with lib; let
   cfg = config.kubernetes.helm;
 
   globalConfig = config;
@@ -20,17 +22,23 @@ let
   parseApiVersion = apiVersion: let
     splitted = splitString "/" apiVersion;
   in {
-    group = if length splitted == 1 then "core" else head splitted;
+    group =
+      if length splitted == 1
+      then "core"
+      else head splitted;
     version = last splitted;
   };
-
 in {
-  imports = [ ./k8s.nix ];
+  imports = [./k8s.nix];
 
   options.kubernetes.helm = {
     instances = mkOption {
       description = "Attribute set of helm instances";
-      type = types.attrsOf (types.submodule ({ config, name, ... }: {
+      type = types.attrsOf (types.submodule ({
+        config,
+        name,
+        ...
+      }: {
         options = {
           name = mkOption {
             description = "Helm release name";
@@ -80,9 +88,11 @@ in {
           };
         };
 
-        config.overrides = mkIf (config.overrideNamespace && config.namespace != null) [{
-          metadata.namespace = config.namespace;
-        }];
+        config.overrides = mkIf (config.overrideNamespace && config.namespace != null) [
+          {
+            metadata.namespace = config.namespace;
+          }
+        ];
 
         config.objects = importJSON (helm.chart2json {
           inherit (config) chart name namespace values kubeVersion;
@@ -94,17 +104,21 @@ in {
 
   config = {
     # expose helm helper methods as module argument
-    _module.args.helm = import ../lib/helm { inherit pkgs; };
+    _module.args.helm = import ../lib/helm {inherit pkgs;};
 
-    kubernetes.api.resources = mkMerge (flatten (mapAttrsToList (_: instance:
-      map (object: let
-        apiVersion = parseApiVersion object.apiVersion;
-        name = object.metadata.name;
-      in {
-        "${apiVersion.group}"."${apiVersion.version}".${object.kind}."${name}" = mkMerge ([
-          object
-        ] ++ instance.overrides);
-      }) instance.objects
-    ) cfg.instances));
+    kubernetes.api.resources = mkMerge (flatten (mapAttrsToList (
+        _: instance:
+          map (object: let
+            apiVersion = parseApiVersion object.apiVersion;
+            name = object.metadata.name;
+          in {
+            "${apiVersion.group}"."${apiVersion.version}".${object.kind}."${name}" = mkMerge ([
+                object
+              ]
+              ++ instance.overrides);
+          })
+          instance.objects
+      )
+      cfg.instances));
   };
 }

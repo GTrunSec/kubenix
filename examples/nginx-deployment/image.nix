@@ -1,8 +1,10 @@
-{ dockerTools, nginx }:
-
+{
+  dockerTools,
+  nginx,
+}:
 dockerTools.buildLayeredImage {
   name = "nginx";
-  contents = [ nginx ];
+  contents = [nginx];
   extraCommands = ''
     mkdir -p etc
     chmod u+w etc

@@ -1,8 +1,10 @@
-{ pkgs, dockerTools, lib, ... }:
-
-with lib;
-
 {
+  pkgs,
+  dockerTools,
+  lib,
+  ...
+}:
+with lib; {
   nginx = let
     nginxPort = "80";
     nginxConf = pkgs.writeText "nginx.conf" ''
@@ -25,21 +27,22 @@ with lib;
     nginxWebRoot = pkgs.writeTextDir "index.html" ''
       <html><body><h1>Hello from NGINX</h1></body></html>
     '';
-  in dockerTools.buildLayeredImage {
-    name = "xtruder/nginx";
-    tag = "latest";
-    contents = [pkgs.nginx];
-    extraCommands = ''
-      mkdir -p etc
-      chmod u+w etc
-      echo "nginx:x:1000:1000::/:" > etc/passwd
-      echo "nginx:x:1000:nginx" > etc/group
-    '';
-    config = {
-      Cmd = ["nginx" "-c" nginxConf];
-      ExposedPorts = {
-        "${nginxPort}/tcp" = {};
+  in
+    dockerTools.buildLayeredImage {
+      name = "xtruder/nginx";
+      tag = "latest";
+      contents = [pkgs.nginx];
+      extraCommands = ''
+        mkdir -p etc
+        chmod u+w etc
+        echo "nginx:x:1000:1000::/:" > etc/passwd
+        echo "nginx:x:1000:nginx" > etc/group
+      '';
+      config = {
+        Cmd = ["nginx" "-c" nginxConf];
+        ExposedPorts = {
+          "${nginxPort}/tcp" = {};
+        };
       };
     };
-  };
 }

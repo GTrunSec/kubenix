@@ -1,37 +1,64 @@
-{ options, config, lib, kubenix, pkgs, k8sVersion, ... }:
-
-with lib;
-
-let
-  findObject = { kind, name }: filter (object:
-    object.kind == kind && object.metadata.name == name
-  ) config.kubernetes.objects;
+{
+  options,
+  config,
+  lib,
+  kubenix,
+  pkgs,
+  k8sVersion,
+  ...
+}:
+with lib; let
+  findObject = {
+    kind,
+    name,
+  }:
+    filter (
+      object:
+        object.kind == kind && object.metadata.name == name
+    )
+    config.kubernetes.objects;
 
   getObject = filter: head (findObject filter);
 
-  hasObject = { kind, name }: length (findObject { inherit kind name; }) == 1;
+  hasObject = {
+    kind,
+    name,
+  }:
+    length (findObject {inherit kind name;}) == 1;
 in {
-  imports = with kubenix.modules; [ test k8s legacy ];
+  imports = with kubenix.modules; [test k8s legacy];
 
   test = {
     name = "legacy-crd";
     description = "Simple test tesing kubenix legacy integration with crds crd";
     enable = builtins.compareVersions config.kubernetes.version "1.15" <= 0;
-    assertions = [{
-      message = "should define crd in module";
-      assertion =
-        hasObject {kind = "SecretClaim"; name = "module-claim";};
-    } {
-      message = "should define crd in root";
-      assertion =
-        hasObject {kind = "SecretClaim"; name = "root-claim";};
-    }];
+    assertions = [
+      {
+        message = "should define crd in module";
+        assertion = hasObject {
+          kind = "SecretClaim";
+          name = "module-claim";
+        };
+      }
+      {
+        message = "should define crd in root";
+        assertion = hasObject {
+          kind = "SecretClaim";
+          name = "root-claim";
+        };
+      }
+    ];
   };
 
   kubernetes.version = k8sVersion;
   kubernetes.namespace = "test";
 
-  kubernetes.moduleDefinitions.secret-claim.module = { config, k8s, module, ... }: {
+  kubernetes.moduleDefinitions.secret-claim.module = {
+    config,
+    k8s,
+    module,
+    ...
+  }: {
     options = {
       name = mkOption {
         description = "Name of the secret claim";
@@ -63,7 +90,7 @@ in {
       };
     };
 
-		config = {
+    config = {
       kubernetes.resources.customResourceDefinitions.secret-claims = {
         kind = "CustomResourceDefinition";
         apiVersion = "apiextensions.k8s.io/v1beta1";
@@ -82,13 +109,16 @@ in {
 
       kubernetes.customResources.secret-claims.claim = {
         metadata.name = config.name;
-        spec = {
-          inherit (config) type path;
-        } // (optionalAttrs (config.renew != null) {
-          inherit (config) renew;
-        }) // (optionalAttrs (config.data != null) {
-          inherit (config) data;
-        });
+        spec =
+          {
+            inherit (config) type path;
+          }
+          // (optionalAttrs (config.renew != null) {
+            inherit (config) renew;
+          })
+          // (optionalAttrs (config.data != null) {
+            inherit (config) data;
+          });
       };
     };
   };

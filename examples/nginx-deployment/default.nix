@@ -1,24 +1,27 @@
-{ kubenix ? import ../.. {}, registry ? "docker.io/gatehub" }:
-
-with kubenix.lib;
-
-rec {
+{
+  kubenix ? import ../.. {},
+  registry ? "docker.io/gatehub",
+}:
+with kubenix.lib; rec {
   # evaluated configuration
-  config = (kubenix.evalModules {
-    modules = [
-      ./module.nix
-      { docker.registry.url = registry; }
+  config =
+    (kubenix.evalModules {
+      modules = [
+        ./module.nix
+        {docker.registry.url = registry;}
 
-      kubenix.modules.testing
-      {
-        testing.tests = [ ./test.nix ];
-        testing.defaults = ({ lib, ... }: with lib; {
-          docker.registry.url = mkForce "";
-          kubernetes.version = config.kubernetes.version;
-        });
-      }
-    ];
-  }).config;
+        kubenix.modules.testing
+        {
+          testing.tests = [./test.nix];
+          testing.defaults = {lib, ...}:
+            with lib; {
+              docker.registry.url = mkForce "";
+              kubernetes.version = config.kubernetes.version;
+            };
+        }
+      ];
+    })
+    .config;
 
   # e2e test
   test = config.testing.result;

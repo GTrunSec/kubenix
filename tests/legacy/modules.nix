@@ -1,39 +1,81 @@
-{ options, config, lib, kubenix, pkgs, k8sVersion, ... }:
-
-with lib;
-
-let
-  findObject = { kind, name }: filter (object:
-    object.kind == kind && object.metadata.name == name
-  ) config.kubernetes.objects;
+{
+  options,
+  config,
+  lib,
+  kubenix,
+  pkgs,
+  k8sVersion,
+  ...
+}:
+with lib; let
+  findObject = {
+    kind,
+    name,
+  }:
+    filter (
+      object:
+        object.kind == kind && object.metadata.name == name
+    )
+    config.kubernetes.objects;
 
   getObject = filter: head (findObject filter);
 
-  hasObject = { kind, name }: length (findObject { inherit kind name; }) == 1;
+  hasObject = {
+    kind,
+    name,
+  }:
+    length (findObject {inherit kind name;}) == 1;
 in {
-  imports = with kubenix.modules; [ test k8s legacy ];
+  imports = with kubenix.modules; [test k8s legacy];
 
   test = {
     name = "legacy-modules";
     description = "Simple test tesing kubenix legacy modules";
-    assertions = [{
-      message = "should have all objects";
-      assertion =
-        hasObject {kind = "Deployment"; name = "myapp";} &&
-        hasObject {kind = "Deployment"; name = "myapp2";} &&
-        hasObject {kind = "Deployment"; name = "myapp2-app2";};
-    } {
-      message = "should have default labels set";
-      assertion =
-        (getObject {kind = "Deployment"; name = "myapp2-app2";})
-          .metadata.labels.module-label or false == "value" &&
-        (getObject {kind = "Deployment"; name = "myapp2";})
-          .metadata.labels.module-label or false == "value";
-    } {
-      message = "should passthru resources to root module";
-      assertion =
-        config.kubernetes.resources.deployments.myapp2-app2-app.metadata.labels.module-label or false == "value";
-    }];
+    assertions = [
+      {
+        message = "should have all objects";
+        assertion =
+          hasObject {
+            kind = "Deployment";
+            name = "myapp";
+          }
+          && hasObject {
+            kind = "Deployment";
+            name = "myapp2";
+          }
+          && hasObject {
+            kind = "Deployment";
+            name = "myapp2-app2";
+          };
+      }
+      {
+        message = "should have default labels set";
+        assertion =
+          (getObject {
+            kind = "Deployment";
+            name = "myapp2-app2";
+          })
+          .metadata
+          .labels
+          .module-label
+          or false
+          == "value"
+          && (getObject {
+            kind = "Deployment";
+            name = "myapp2";
+          })
+          .metadata
+          .labels
+          .module-label
+          or false
+          == "value";
+      }
+      {
+        message = "should passthru resources to root module";
+        assertion =
+          config.kubernetes.resources.deployments.myapp2-app2-app.metadata.labels.module-label or false == "value";
+      }
+    ];
   };
 
   kubernetes.version = k8sVersion;
@@ -46,7 +88,12 @@ in {
     all.kubernetes.defaults = mkAliasDefinitions options.kubernetes.defaults;
   };
 
-  kubernetes.moduleDefinitions.app1.module = { config, k8s, module, ... }: {
+  kubernetes.moduleDefinitions.app1.module = {
+    config,
+    k8s,
+    module,
+    ...
+  }: {
     config.kubernetes.resources.deployments.app = {
       metadata.name = module.name;
       spec = {
@@ -62,7 +109,13 @@ in {
     };
   };
 
-  kubernetes.moduleDefinitions.app2.module = { name, config, k8s, module, ... }: {
+  kubernetes.moduleDefinitions.app2.module = {
+    name,
+    config,
+    k8s,
+    module,
+    ...
+  }: {
     options = {
       replicas = mkOption {
         description = "Number of replicas to run";

@@ -1,18 +1,18 @@
-{ name ? "k8s"
-, pkgs ? import <nixpkgs> {}
-, lib ? pkgs.lib
-, spec ? ./specs/1.10/swagger.json
-, ... }:
-
-with lib;
-
-let
+{
+  name ? "k8s",
+  pkgs ? import <nixpkgs> {},
+  lib ? pkgs.lib,
+  spec ? ./specs/1.10/swagger.json,
+  ...
+}:
+with lib; let
   gen = rec {
     mkMerge = values: ''mkMerge [${concatMapStrings (value: "
       ${value}
     ") values}]'';
 
-    toNixString = value: if isAttrs value || isList value
+    toNixString = value:
+      if isAttrs value || isList value
       then builtins.toJSON value
       else if isString value
       then ''"${value}"''
@@ -26,15 +26,16 @@ let
       description ? null,
       type ? null,
       default ? null,
-      apply ? null
-    }:  removeEmptyLines ''mkOption {
-      ${optionalString (description != null) "description = ${builtins.toJSON description};"}
-      ${optionalString (type != null) ''type = ${type};''}
-      ${optionalString (default != null) ''default = ${toNixString default};''}
-      ${optionalString (apply != null) ''apply = ${apply};''}
-    }'';
+      apply ? null,
+    }:
+      removeEmptyLines ''        mkOption {
+              ${optionalString (description != null) "description = ${builtins.toJSON description};"}
+              ${optionalString (type != null) ''type = ${type};''}
+              ${optionalString (default != null) ''default = ${toNixString default};''}
+              ${optionalString (apply != null) ''apply = ${apply};''}
+            }'';
 
-    mkOverride = priority: value:  "mkOverride ${toString priority} ${toNixString value}";
+    mkOverride = priority: value: "mkOverride ${toString priority} ${toNixString value}";
 
     types = {
       unspecified = "types.unspecified";
@@ -45,36 +46,38 @@ let
       nullOr = val: "(types.nullOr ${val})";
       attrsOf = val: "(types.attrsOf ${val})";
       listOf = val: "(types.listOf ${val})";
-      coercedTo = coercedType: coerceFunc: finalType:
-        "(types.coercedTo ${coercedType} ${coerceFunc} ${finalType})";
+      coercedTo = coercedType: coerceFunc: finalType: "(types.coercedTo ${coercedType} ${coerceFunc} ${finalType})";
       either = val1: val2: "(types.either ${val1} ${val2})";
       loaOf = type: "(types.loaOf ${type})";
     };
 
     hasTypeMapping = def:
-      hasAttr "type" def &&
-      elem def.type ["string" "integer" "boolean"];
+      hasAttr "type" def
+      && elem def.type ["string" "integer" "boolean"];
 
     mergeValuesByKey = mergeKey: ''(mergeValuesByKey "${mergeKey}")'';
 
     mapType = def:
-      if def.type == "string" then
+      if def.type == "string"
+      then
         if hasAttr "format" def && def.format == "int-or-string"
         then types.either types.int types.str
         else types.str
-      else if def.type == "integer" then types.int
-      else if def.type == "number" then types.int
-      else if def.type == "boolean" then types.bool
-      else if def.type == "object" then types.attrs
+      else if def.type == "integer"
+      then types.int
+      else if def.type == "number"
+      then types.int
+      else if def.type == "boolean"
+      then types.bool
+      else if def.type == "object"
+      then types.attrs
       else throw "type ${def.type} not supported";
 
     submoduleOf = definitions: ref: ''(submoduleOf "${ref}")'';
 
-    submoduleForDefinition = ref: name: kind: group: version:
-      ''(submoduleForDefinition "${ref}" "${name}" "${kind}" "${group}" "${version}")'';
+    submoduleForDefinition = ref: name: kind: group: version: ''(submoduleForDefinition "${ref}" "${name}" "${kind}" "${group}" "${version}")'';
 
-    coerceAttrsOfSubmodulesToListByKey = ref: mergeKey:
-      ''(coerceAttrsOfSubmodulesToListByKey "${ref}" "${mergeKey}")'';
+    coerceAttrsOfSubmodulesToListByKey = ref: mergeKey: ''(coerceAttrsOfSubmodulesToListByKey "${ref}" "${mergeKey}")'';
 
     attrsToList = "values: if values != null then mapAttrsToList (n: v: v) values else values";
 
@@ -88,181 +91,222 @@ let
     splitVersion = v: builtins.splitVersion (getVersion v);
     isAlpha = v: elem "alpha" (splitVersion v);
     patchVersion = v:
-      if isAlpha v then ""
-      else if length (splitVersion v) == 1 then "${getVersion v}prod"
+      if isAlpha v
+      then ""
+      else if length (splitVersion v) == 1
+      then "${getVersion v}prod"
       else getVersion v;
 
     v1 = patchVersion ver1;
     v2 = patchVersion ver2;
-  in builtins.compareVersions v1 v2;
+  in
+    builtins.compareVersions v1 v2;
 
   fixJSON = content: replaceStrings ["\\u"] ["u"] content;
 
   fetchSpecs = path: builtins.fromJSON (fixJSON (builtins.readFile path));
 
-  genDefinitions = swagger: with gen; mapAttrs (name: definition:
-    # if $ref is in definition it means it's an alias of other definition
-    if hasAttr "$ref" definition
-    then definitions."${refDefinition definition}"
+  genDefinitions = swagger:
+    with gen;
+      mapAttrs (
+        name: definition:
+        # if $ref is in definition it means it's an alias of other definition
+          if hasAttr "$ref" definition
+          then definitions."${refDefinition definition}"
+          else if !(hasAttr "properties" definition)
+          then {}
+          # in other case it's an actual definition
+          else {
+            options =
+              mapAttrs (
+                propName: property: let
+                  isRequired = elem propName (definition.required or []);
+                  requiredOrNot = type:
+                    if isRequired
+                    then type
+                    else types.nullOr type;
+                  optionProperties =
+                    # if $ref is in property it references other definition,
+                    # but if other definition does not have properties, then just take it's type
+                    if hasAttr "$ref" property
+                    then
+                      if hasTypeMapping swagger.definitions.${refDefinition property}
+                      then {
+                        type = requiredOrNot (mapType swagger.definitions.${refDefinition property});
+                      }
+                      else {
+                        type = requiredOrNot (submoduleOf definitions (refDefinition property));
+                      }
+                    # if property has an array type
+                    else if property.type == "array"
+                    then
+                      # if reference is in items it can reference other type of another
+                      # definition
+                      if hasAttr "$ref" property.items
+                      then
+                        # if it is a reference to simple type
+                        if hasTypeMapping swagger.definitions.${refDefinition property.items}
+                        then {
+                          type = requiredOrNot (types.listOf (mapType swagger.definitions.${refDefinition property.items}.type));
+                        }
+                        # if a reference is to complex type
+                        else
+                          # if x-kubernetes-patch-merge-key is set then make it an
+                          # attribute set of submodules
+                          if hasAttr "x-kubernetes-patch-merge-key" property
+                          then let
+                            mergeKey = property."x-kubernetes-patch-merge-key";
+                          in {
+                            type = requiredOrNot (coerceAttrsOfSubmodulesToListByKey (refDefinition property.items) mergeKey);
+                            apply = attrsToList;
+                          }
+                          # in other case it's a simple list
+                          else {
+                            type = requiredOrNot (types.listOf (submoduleOf definitions (refDefinition property.items)));
+                          }
+                      # in other case it only references a simple type
+                      else {
+                        type = requiredOrNot (types.listOf (mapType property.items));
+                      }
+                    else if property.type == "object" && hasAttr "additionalProperties" property
+                    then
+                      # if it is a reference to simple type
+                      if
+                        (
+                          hasAttr "$ref" property.additionalProperties
+                          && hasTypeMapping swagger.definitions.${refDefinition property.additionalProperties}
+                        )
+                      then {
+                        type = requiredOrNot (types.attrsOf (mapType swagger.definitions.${refDefinition property.additionalProperties}));
+                      }
+                      else if hasAttr "$ref" property.additionalProperties
+                      then {
+                        type = requiredOrNot types.attrs;
+                      }
+                      # if is an array
+                      else if property.additionalProperties.type == "array"
+                      then {
+                        type = requiredOrNot (types.loaOf (mapType property.additionalProperties.items));
+                      }
+                      else {
+                        type = requiredOrNot (types.attrsOf (mapType property.additionalProperties));
+                      }
+                    # just a simple property
+                    else {
+                      type = requiredOrNot (mapType property);
+                    };
+                in
+                  mkOption ({
+                      description = property.description or "";
+                    }
+                    // optionProperties)
+              )
+              definition.properties;
+            config = let
+              optionalProps =
+                filterAttrs (
+                  propName: property:
+                    !(elem propName (definition.required or []))
+                )
+                definition.properties;
+            in
+              mapAttrs (name: property: mkOverride 1002 null) optionalProps;
+          }
+      )
+      swagger.definitions;
 
-    else if !(hasAttr "properties" definition)
-    then {}
-
-    # in other case it's an actual definition
-    else {
-      options = mapAttrs (propName: property:
-        let
-          isRequired = elem propName (definition.required or []);
-          requiredOrNot = type: if isRequired then type else types.nullOr type;
-          optionProperties =
-
-            # if $ref is in property it references other definition,
-            # but if other definition does not have properties, then just take it's type
-            if hasAttr "$ref" property then
-              if hasTypeMapping swagger.definitions.${refDefinition property} then {
-                type = requiredOrNot (mapType swagger.definitions.${refDefinition property});
-              }
-              else {
-                type = requiredOrNot (submoduleOf definitions (refDefinition property));
-              }
-
-            # if property has an array type
-            else if property.type == "array" then
-
-              # if reference is in items it can reference other type of another
-              # definition
-              if hasAttr "$ref" property.items then
-
-                # if it is a reference to simple type
-                if hasTypeMapping swagger.definitions.${refDefinition property.items}
-                then {
-                  type = requiredOrNot (types.listOf (mapType swagger.definitions.${refDefinition property.items}.type));
-                }
-
-                # if a reference is to complex type
-                else
-                  # if x-kubernetes-patch-merge-key is set then make it an
-                  # attribute set of submodules
-                  if hasAttr "x-kubernetes-patch-merge-key" property
-                  then let
-                    mergeKey = property."x-kubernetes-patch-merge-key";
-                  in {
-                    type = requiredOrNot (coerceAttrsOfSubmodulesToListByKey (refDefinition property.items) mergeKey);
-                    apply = attrsToList;
-                  }
-
-                  # in other case it's a simple list
-                  else {
-                    type = requiredOrNot (types.listOf (submoduleOf definitions (refDefinition property.items)));
-                  }
-
-              # in other case it only references a simple type
-              else {
-                type = requiredOrNot (types.listOf (mapType property.items));
-              }
-
-            else if property.type == "object" && hasAttr "additionalProperties" property
-            then
-              # if it is a reference to simple type
-              if (
-                hasAttr "$ref" property.additionalProperties &&
-                hasTypeMapping swagger.definitions.${refDefinition property.additionalProperties}
-              ) then {
-                type = requiredOrNot (types.attrsOf (mapType swagger.definitions.${refDefinition property.additionalProperties}));
-              }
-
-              else if hasAttr "$ref" property.additionalProperties
-              then {
-                type = requiredOrNot types.attrs;
-              }
-
-              # if is an array
-              else if property.additionalProperties.type == "array"
-              then {
-                type = requiredOrNot (types.loaOf (mapType property.additionalProperties.items));
-              }
-
-              else {
-                type = requiredOrNot (types.attrsOf (mapType property.additionalProperties));
-              }
-
-            # just a simple property
-            else {
-              type = requiredOrNot (mapType property);
-            };
-        in mkOption ({
-          description = property.description or "";
-        } // optionProperties)
-      ) definition.properties;
-      config =
-      let
-        optionalProps = filterAttrs (propName: property:
-          !(elem propName (definition.required or []))
-        ) definition.properties;
-      in mapAttrs (name: property: mkOverride 1002 null) optionalProps;
-    }
-  ) swagger.definitions;
-
-  mapCharPairs = f: s1: s2: concatStrings (imap0 (i: c1:
-    f i c1 (if i >= stringLength s2 then "" else elemAt (stringToCharacters s2) i)
-  ) (stringToCharacters s1));
+  mapCharPairs = f: s1: s2:
+    concatStrings (imap0 (
+      i: c1:
+        f i c1 (
+          if i >= stringLength s2
+          then ""
+          else elemAt (stringToCharacters s2) i
+        )
+    ) (stringToCharacters s1));
 
   getAttrName = resource: kind:
-    mapCharPairs (i: c1: c2:
-      if hasPrefix "API" kind && i == 0 then "A"
-      else if i == 0 then c1
-      else if c2 == "" || (toLower c2) != c1 then c1
-      else c2
-    ) resource kind;
+    mapCharPairs (
+      i: c1: c2:
+        if hasPrefix "API" kind && i == 0
+        then "A"
+        else if i == 0
+        then c1
+        else if c2 == "" || (toLower c2) != c1
+        then c1
+        else c2
+    )
+    resource
+    kind;
 
-  genResourceTypes = swagger: mapAttrs' (name: path: let
-    ref = refType (head path.post.parameters).schema;
-    group' = path.post."x-kubernetes-group-version-kind".group;
-    version' = path.post."x-kubernetes-group-version-kind".version;
-    kind' = path.post."x-kubernetes-group-version-kind".kind;
-    name' = last (splitString "/" name);
-    attrName = getAttrName name' kind';
-  in nameValuePair ref {
-    inherit ref attrName;
+  genResourceTypes = swagger:
+    mapAttrs' (name: path: let
+      ref = refType (head path.post.parameters).schema;
+      group' = path.post."x-kubernetes-group-version-kind".group;
+      version' = path.post."x-kubernetes-group-version-kind".version;
+      kind' = path.post."x-kubernetes-group-version-kind".kind;
+      name' = last (splitString "/" name);
+      attrName = getAttrName name' kind';
+    in
+      nameValuePair ref {
+        inherit ref attrName;
 
-    name = name';
-    group = if group' == "" then "core" else group';
-    version = version';
-    kind = kind';
-    description = swagger.definitions.${ref}.description;
-    defintion = refDefinition (head path.post.parameters).schema;
-  })
-  (filterAttrs (name: path:
-    hasAttr "post" path &&
-    path.post."x-kubernetes-action" == "post"
-  ) swagger.paths);
+        name = name';
+        group =
+          if group' == ""
+          then "core"
+          else group';
+        version = version';
+        kind = kind';
+        description = swagger.definitions.${ref}.description;
+        defintion = refDefinition (head path.post.parameters).schema;
+      })
+    (filterAttrs (
+        name: path:
+          hasAttr "post" path
+          && path.post."x-kubernetes-action" == "post"
+      )
+      swagger.paths);
 
   swagger = fetchSpecs spec;
   definitions = genDefinitions swagger;
   resourceTypes = genResourceTypes swagger;
 
   resourceTypesByKind = zipAttrs (mapAttrsToList (name: resourceType: {
-    ${resourceType.kind} = resourceType;
-  }) resourceTypes);
+      ${resourceType.kind} = resourceType;
+    })
+    resourceTypes);
 
-  resourcesTypesByKindSortByVersion = mapAttrs (kind: resourceTypes:
-    reverseList (sort (r1: r2:
-      compareVersions r1.version r2.version > 0
-    ) resourceTypes)
-  ) resourceTypesByKind;
+  resourcesTypesByKindSortByVersion =
+    mapAttrs (
+      kind: resourceTypes:
+        reverseList (sort (
+            r1: r2:
+              compareVersions r1.version r2.version > 0
+          )
+          resourceTypes)
+    )
+    resourceTypesByKind;
 
   latestResourceTypesByKind =
     mapAttrs (kind: resources: last resources) resourcesTypesByKindSortByVersion;
 
-  genResourceOptions = resource: with gen; let
-    submoduleForDefinition' = definition: let
-    in submoduleForDefinition
-      definition.ref definition.name definition.kind definition.group definition.version;
-  in mkOption {
-    description = resource.description;
-    type = types.attrsOf (submoduleForDefinition' resource);
-    default = {};
-  };
+  genResourceOptions = resource:
+    with gen; let
+      submoduleForDefinition' = definition: let
+      in
+        submoduleForDefinition
+        definition.ref
+        definition.name
+        definition.kind
+        definition.group
+        definition.version;
+    in
+      mkOption {
+        description = resource.description;
+        type = types.attrsOf (submoduleForDefinition' resource);
+        default = {};
+      };
 
   generated = ''
     # This file was generated with kubenix k8s generator, do not edit
@@ -364,32 +408,37 @@ let
 
       definitions = {
         ${concatStrings (mapAttrsToList (name: value: ''
-          "${name}" = {
-            ${optionalString (hasAttr "options" value) "
+        "${name}" = {
+          ${optionalString (hasAttr "options" value) "
             options = {${concatStrings (mapAttrsToList (name: value: ''
-              "${name}" = ${value};
-            '') value.options)}};
+            "${name}" = ${value};
+          '')
+          value.options)}};
             "}
 
-            ${optionalString (hasAttr "config" value) ''
-              config = {${concatStrings (mapAttrsToList (name: value: ''
-                "${name}" = ${value};
-              '') value.config)}};
-            ''}
-          };
-        '') definitions)}
+          ${optionalString (hasAttr "config" value) ''
+          config = {${concatStrings (mapAttrsToList (name: value: ''
+              "${name}" = ${value};
+            '')
+            value.config)}};
+        ''}
+        };
+      '')
+      definitions)}
       };
     in {
       # all resource versions
       options = {
         resources = {
           ${concatStrings (mapAttrsToList (_: rt: ''
-            "${rt.group}"."${rt.version}"."${rt.kind}" = ${genResourceOptions rt};
-          '') resourceTypes)}
+        "${rt.group}"."${rt.version}"."${rt.kind}" = ${genResourceOptions rt};
+      '')
+      resourceTypes)}
         } // {
           ${concatStrings (mapAttrsToList (_: rt: ''
-            "${rt.attrName}" = ${genResourceOptions rt};
-          '') latestResourceTypesByKind)}
+        "${rt.attrName}" = ${genResourceOptions rt};
+      '')
+      latestResourceTypesByKind)}
         };
       };
 
@@ -398,26 +447,29 @@ let
         inherit definitions;
 
         # register resource types
-        types = [${concatStrings (mapAttrsToList (_: rt: ''{
-          name = "${rt.name}";
-          group = "${rt.group}";
-          version = "${rt.version}";
-          kind = "${rt.kind}";
-          attrName = "${rt.attrName}";
-        }'') resourceTypes)}];
+        types = [${concatStrings (mapAttrsToList (_: rt: ''      {
+                name = "${rt.name}";
+                group = "${rt.group}";
+                version = "${rt.version}";
+                kind = "${rt.kind}";
+                attrName = "${rt.attrName}";
+              }'')
+    resourceTypes)}];
 
         resources = {
           ${concatStrings (mapAttrsToList (_: rt: ''
-            "${rt.group}"."${rt.version}"."${rt.kind}" =
-              mkAliasDefinitions options.resources."${rt.attrName}";
-          '') latestResourceTypesByKind)}
+        "${rt.group}"."${rt.version}"."${rt.kind}" =
+          mkAliasDefinitions options.resources."${rt.attrName}";
+      '')
+      latestResourceTypesByKind)}
         };
       };
     }
   '';
-in pkgs.runCommand "k8s-${name}-gen.nix" {
-  buildInputs = [ pkgs.haskellPackages.nixfmt ];
-} ''
-  cp ${builtins.toFile "k8s-${name}-gen-raw.nix" generated} $out
-  nixfmt -w 100 $out
-''
+in
+  pkgs.runCommand "k8s-${name}-gen.nix" {
+    buildInputs = [pkgs.haskellPackages.nixfmt];
+  } ''
+    cp ${builtins.toFile "k8s-${name}-gen-raw.nix" generated} $out
+    nixfmt -w 100 $out
+  ''

@@ -1,20 +1,26 @@
-{ config, lib, kubenix, pkgs, k8sVersion, ... }:
-
-with lib;
-
-let
+{
+  config,
+  lib,
+  kubenix,
+  pkgs,
+  k8sVersion,
+  ...
+}:
+with lib; let
   latestCrontab = config.kubernetes.api.resources.cronTabs.latest;
 in {
-  imports = with kubenix.modules; [ test k8s ];
+  imports = with kubenix.modules; [test k8s];
 
   test = {
     name = "k8s-crd";
     description = "Simple test tesing CRD";
     enable = builtins.compareVersions config.kubernetes.version "1.8" >= 0;
-    assertions = [{
-      message = "Custom resource should have correct version set";
-      assertion = latestCrontab.apiVersion == "stable.example.com/v2";
-    }];
+    assertions = [
+      {
+        message = "Custom resource should have correct version set";
+        assertion = latestCrontab.apiVersion == "stable.example.com/v2";
+      }
+    ];
     testScript = ''
       $kube->waitUntilSucceeds("kubectl apply -f ${config.kubernetes.result}");
       $kube->succeed("kubectl get crds | grep -i crontabs");
@@ -38,8 +44,8 @@ in {
           type = types.str;
         };
       };
-
-    } {
+    }
+    {
       group = "stable.example.com";
       version = "v2";
       kind = "CronTab";
@@ -58,7 +64,8 @@ in {
           };
         };
       };
-    } {
+    }
+    {
       group = "stable.example.com";
       version = "v3";
       kind = "CronTab";

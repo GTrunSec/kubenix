@@ -1,10 +1,13 @@
-{ name, config, lib, kubenix, ... }:
-
-with lib;
-
-let
-  submodule = { name, ... }: {
-    imports = [ kubenix.modules.submodule ];
+{
+  name,
+  config,
+  lib,
+  kubenix,
+  ...
+}:
+with lib; let
+  submodule = {name, ...}: {
+    imports = [kubenix.modules.submodule];
 
     config.submodule = {
       name = "subm";
@@ -12,7 +15,7 @@ let
     };
   };
 in {
-  imports = with kubenix.modules; [ test submodules ];
+  imports = with kubenix.modules; [test submodules];
 
   options = {
     global = mkOption {
@@ -26,21 +29,27 @@ in {
     test = {
       name = "submodules-passthru";
       description = "Submodules passthru test";
-      assertions = [{
-        message = "should passthru values if passthru enabled";
-        assertion = hasAttr "inst1" config.global && config.global.inst1 == "true";
-      } {
-        message = "should not passthru values if passthru not enabled";
-        assertion = !(hasAttr "inst2" config.global);
-      } {
-        message = "should passthru by default";
-        assertion = hasAttr "inst3" config.global && config.global.inst3 == "true";
-      }];
+      assertions = [
+        {
+          message = "should passthru values if passthru enabled";
+          assertion = hasAttr "inst1" config.global && config.global.inst1 == "true";
+        }
+        {
+          message = "should not passthru values if passthru not enabled";
+          assertion = !(hasAttr "inst2" config.global);
+        }
+        {
+          message = "should passthru by default";
+          assertion = hasAttr "inst3" config.global && config.global.inst3 == "true";
+        }
+      ];
     };
 
-    submodules.imports = [{
-      modules = [submodule];
-    }];
+    submodules.imports = [
+      {
+        modules = [submodule];
+      }
+    ];
 
     submodules.instances.inst1 = {
       submodule = "subm";
